@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="theme-color" content="#0e1015">
+<meta name="theme-color" content="#172a45">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/favicon.ico" sizes="any">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png">
@@ -29,7 +29,10 @@
 :root{--bg:#0e1015;--fg:#f4f5f7;--mute:#a7adb8;--acc:#ff8a1f}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:"IBM Plex Sans Thai",system-ui,sans-serif}
-#app{position:fixed;inset:0;width:100%;height:100%;border:0;display:block;background:#fff;opacity:0;transition:opacity .3s}
+/* แถบทึบใต้แถบสถานะของเครื่อง (เวลา/แบตเตอรี่) ไม่ให้เนื้อหาไปซ้อนจนดูเบลอ · ความสูงคำนวณจาก safe-area และ JS ด้านล่าง */
+:root{--st:env(safe-area-inset-top,0px);--sb:0px;--vh:100%}
+#sbar{position:fixed;left:0;right:0;top:0;height:var(--st);background:#172a45;z-index:5}
+#app{position:fixed;left:0;right:0;top:var(--st);width:100%;height:calc(var(--vh) - var(--st) - var(--sb));border:0;display:block;background:#fff;opacity:0;transition:opacity .3s}
 #app.on{opacity:1}
 .splash{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center;transition:opacity .35s}
 .splash.off{opacity:0;pointer-events:none}
@@ -48,6 +51,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:
 </style>
 </head>
 <body>
+<div id="sbar"></div>
 <div class="splash" id="splash">
   <img src="icons/icon-512.png" alt="ไอคอน PHITSANULOK FIRE & AIR" width="180" height="180">
   <h1>ระบบติดตามไฟป่าและคุณภาพอากาศ</h1>
@@ -65,6 +69,15 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:
 (function(){
   var url=(window.APP_URL||'').trim(), f=document.getElementById('app'), sp=document.getElementById('splash'), msg=document.getElementById('msg'), acts=document.getElementById('acts'), bar=document.getElementById('bar');
   var standalone=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;
+  // จัดขนาดให้เต็มจอทุกเครื่อง (iPhone รุ่นใหม่บางรุ่นคืนค่า safe-area เป็น 0 หรือความสูงจอไม่ครบเมื่อเปิดจากไอคอน)
+  var iOS=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1), R=document.documentElement.style;
+  function fit(){var pr=document.createElement('div');pr.style.cssText='position:fixed;top:0;height:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)';document.body.appendChild(pr);
+    var st=pr.offsetHeight,sb=parseFloat(getComputedStyle(pr).paddingBottom)||0;pr.remove();
+    if(iOS&&standalone&&st<20){var land=window.innerWidth>window.innerHeight;st=land?0:(screen.height>=844?54:(screen.height>=812?47:20))}
+    var vh=Math.max(window.innerHeight,document.documentElement.clientHeight);
+    if(iOS&&standalone){var full=window.innerWidth>window.innerHeight?Math.min(screen.width,screen.height):Math.max(screen.width,screen.height);if(full>vh)vh=full}
+    R.setProperty('--st',st+'px');R.setProperty('--sb','0px');R.setProperty('--vh',vh+'px')}
+  fit();window.addEventListener('resize',fit);window.addEventListener('orientationchange',function(){setTimeout(fit,300)});
   if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(function(){})}
   if(!/^https:\/\/script\.google\.com\/.+\/exec/.test(url)){bar.hidden=true;msg.innerHTML='ยังไม่ได้ตั้งค่าลิงก์ระบบ<br>ให้ผู้ดูแลวางลิงก์เว็บแอป (ลงท้ายด้วย /exec) ในไฟล์ <b>config.js</b>';return}
   document.getElementById('openFull').href=url;
@@ -81,6 +94,44 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:
     if(/iPhone|iPad|iPod/.test(ua))h.innerHTML='เพิ่มไอคอนลงหน้าจอโฮม: กดปุ่ม <b>แชร์</b> (สี่เหลี่ยมมีลูกศรขึ้น) → <b>เพิ่มไปยังหน้าจอโฮม</b>';
     window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();var b=document.createElement('button');b.className='btn ghost';b.textContent='ติดตั้งไอคอนบนเครื่องนี้';b.onclick=function(){e.prompt()};acts.hidden=false;acts.appendChild(b)});
   }
+})();
+</script>
+<!-- v5: รับไฟล์ (PDF/Excel/JPG) จากระบบ แล้วให้ผู้ใช้กดบันทึกหรือแชร์ — iPhone/แอปหน้าจอโฮมดาวน์โหลดจากในกรอบไม่ได้ -->
+<div id="fsave" hidden style="position:fixed;inset:0;z-index:50;background:rgba(10,14,20,.55);display:flex;align-items:flex-end;justify-content:center;padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px))">
+  <div style="width:min(440px,100%);background:#fff;color:#1b1b1b;border-radius:16px;padding:18px 18px 14px;font-family:'IBM Plex Sans Thai','Sarabun',system-ui,sans-serif;box-shadow:0 10px 40px rgba(0,0,0,.35)">
+    <div style="font-weight:700;font-size:17px;margin-bottom:4px">ไฟล์พร้อมแล้ว</div>
+    <div id="fsName" style="font-size:14px;color:#555;word-break:break-all;margin-bottom:14px"></div>
+    <div style="display:grid;gap:8px">
+      <button id="fsShare" type="button" style="height:46px;border:0;border-radius:10px;background:#1f5fae;color:#fff;font-size:16px;font-weight:600">บันทึก / แชร์</button>
+      <button id="fsOpenF" type="button" style="height:44px;border:1px solid #c9d2de;border-radius:10px;background:#fff;color:#1f3a5f;font-size:15px">เปิดดูไฟล์</button>
+      <button id="fsClose" type="button" style="height:40px;border:0;background:none;color:#666;font-size:14px">ปิด</button>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  var box=document.getElementById('fsave'),cur=null,url=null;
+  function hide(){box.hidden=true;box.style.display='none';if(url){setTimeout(function(u){URL.revokeObjectURL(u)}.bind(null,url),60000);url=null}cur=null}
+  box.style.display='none';
+  window.addEventListener('message',function(ev){
+    var d=ev.data;if(!d||d.type!=='plk-file'||!d.buf)return;
+    if(!/^https:\/\/[a-z0-9-]+\.(googleusercontent\.com|google\.com)$/.test(ev.origin))return;   // รับเฉพาะจากระบบบน Google Apps Script
+    try{ev.source.postMessage({type:'plk-file-ok',id:d.id},'*')}catch(e){}
+    var name=String(d.name||'file').replace(/[\\/:*?"<>|]/g,'_');
+    cur={blob:new Blob([d.buf],{type:d.mime||'application/octet-stream'}),name:name};
+    try{cur.file=new File([cur.blob],name,{type:cur.blob.type})}catch(e){}
+    document.getElementById('fsName').textContent=name;
+    var canShare=!!(cur.file&&navigator.canShare&&navigator.canShare({files:[cur.file]}));
+    document.getElementById('fsShare').textContent=canShare?'บันทึก / แชร์':'ดาวน์โหลด';
+    box.hidden=false;box.style.display='flex';
+  });
+  document.getElementById('fsShare').onclick=function(){if(!cur)return;
+    if(cur.file&&navigator.canShare&&navigator.canShare({files:[cur.file]})){navigator.share({files:[cur.file],title:cur.name}).then(hide).catch(function(e){if(e&&e.name==='AbortError')return;dl()});return}
+    dl()};
+  function dl(){if(!cur)return;url=url||URL.createObjectURL(cur.blob);var a=document.createElement('a');a.href=url;a.download=cur.name;document.body.appendChild(a);a.click();a.remove();setTimeout(hide,400)}
+  document.getElementById('fsOpenF').onclick=function(){if(!cur)return;url=url||URL.createObjectURL(cur.blob);var w=window.open(url,'_blank');if(!w)location.href=url};
+  document.getElementById('fsClose').onclick=hide;
+  box.addEventListener('click',function(e){if(e.target===box)hide()});
 })();
 </script>
 </body>
